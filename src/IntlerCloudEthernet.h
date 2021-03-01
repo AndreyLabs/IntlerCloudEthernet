@@ -42,11 +42,21 @@ class Cloud
     
     void sendValue(String name, double value);
     void addCommand(String name, void (*orderFunction)(double));
-	
+
+	int getHour();
+	int getMinute();
+	int getSecond();
+
+	void printLastResponseTime();
+	bool isAnswerRecived();
   private:
     String login;
     String password;
     String device;
+
+    int hour;
+    int minute;
+    int second;
 
     Order* receivedOrders;
     Command* commands;
@@ -54,6 +64,7 @@ class Cloud
 
     IPAddress* generatedIp;
 
+    unsigned long beginMicros, endMicros;
     long requestTiming;
     int interval;
 
@@ -61,8 +72,11 @@ class Cloud
     void clearSensorsValues();
 
     bool waitResponce;
-    EthernetClient* bufClient;
+    EthernetClient bufClient;
+    void parseCurrentTime(String data);
     void sendRequest();
+    void sendData(String url, String data);
+    String getCloudInput();
     String getRequestBody();
     String getOrdersString();
     void parseHttpResponce(String responce);

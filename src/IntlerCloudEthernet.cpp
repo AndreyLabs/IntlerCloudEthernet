@@ -3,8 +3,11 @@
 Cloud::Cloud()
 {
   login = password = device = "";
-
   interval = DEFAULT_INTERVAL;
+
+  hour = -1;
+  minute = -1;
+  second = -1;
 }
 
 Cloud::Cloud(String login, String password, String device)
@@ -12,9 +15,12 @@ Cloud::Cloud(String login, String password, String device)
   this->login = login;
   this->password = password;
   this->device = device;
-
   interval = DEFAULT_INTERVAL;
   receivedOrders = NULL;
+
+  hour = -1;
+  minute = -1;
+  second = -1;
 }
 
 void Cloud::setLogin(String login) {
@@ -29,8 +35,32 @@ void Cloud::setDevice(String device) {
   this->device = device;
 }
 
-void Cloud::sendValue(String name, double value) {
+int Cloud::getHour(){
+    return hour;
+}
 
+int Cloud::getMinute(){
+    return minute;
+}
+
+int Cloud::getSecond(){
+    return second;
+}
+
+void Cloud::parseCurrentTime(String data){
+    if(data == "")
+        return;
+
+    String s = data.substring(data.length() - 2, data.length());
+    String m = data.substring(data.length() - 5, data.length() - 3);
+    String h = data.substring(data.length() - 8, data.length() - 6);
+
+    hour = h.toInt();
+    minute = m.toInt();
+    second = s.toInt();
+}
+
+void Cloud::sendValue(String name, double value) {
   if (sensorsList == NULL) {
     SensorValue* newSensorValue = new SensorValue;
     newSensorValue->name = name;
@@ -100,31 +130,42 @@ String Cloud::getRequestBody() {
   return requestBody;
 }
 
+void Cloud::sendData(String url, String data) {
+  if (bufClient.connect(SERVER, 80)) {
+    bufClient.print("POST ");
+    bufClient.print(url);
+    bufClient.println(" HTTP/1.1");
+    bufClient.print("Host: ");
+    bufClient.println(SERVER);
+    bufClient.println("Content-Type: application/json");
+    bufClient.println("Connection: close");
+    bufClient.print("Content-Length: ");
+    bufClient.println(data.length());
+    bufClient.println();
+    bufClient.print(data);
+    bufClient.println();
+  }
+  else {
+    Serial.println("cannot connect to Intler cloud");
+  }
+}
+
+String Cloud::getCloudInput() {
+  String cloudInput = "";
+  while (bufClient.available()) {
+    char c = bufClient.read();
+    cloudInput.concat(c);
+  }
+  return cloudInput;
+}
+
 void Cloud::sendRequest() {
   if (!waitResponce) {
-    bufClient = new EthernetClient;
+    //bufClient = new EthernetClient;
     String data = getRequestBody();
-	Serial.println(Ethernet.localIP());
+	Serial.println("Your localIP" + Ethernet.localIP());
+    sendData(URL, data);
 
-    if ((*bufClient).connect(SERVER, 80)) {
-       //Serial.println("connected");
-      (*bufClient).print("POST ");
-	  (*bufClient).print(URL);
-      (*bufClient).println(" HTTP/1.1");
-      (*bufClient).print("Host: ");
-	  (*bufClient).println(SERVER);
-      (*bufClient).println("Content-Type: application/json");
-      (*bufClient).println("Connection: close");
-      (*bufClient).print("Content-Length: ");
-      (*bufClient).println(data.length());
-      (*bufClient).println();
-      (*bufClient).print(data);
-      (*bufClient).println();
-	  Serial.println("sended");
-    }
-    else {
-      Serial.println("cannot connect to Intler cloud");
-    }
     clearOrders();
     clearSensorsValues();
 
@@ -133,18 +174,17 @@ void Cloud::sendRequest() {
   }
 
   if (millis() - requestTiming > interval) {
-    waitResponce = false;
+      waitResponce = false;
 
-    String cloudInput = "";
-    while ((*bufClient).available()) {
-      char c = (*bufClient).read();
-      cloudInput.concat(c);
+      String cloudInput = getCloudInput();
+
+      parseCurrentTime(cloudInput.substring(cloudInput.indexOf("Date"),cloudInput.indexOf("GMT") - 1));
+
+      parseHttpResponce(cloudInput.substring(cloudInput.indexOf("{"),cloudInput.indexOf("}") + 1));
     }
 
-    parseHttpResponce(cloudInput.substring(cloudInput.indexOf("{"),cloudInput.indexOf("}") + 1));
-    delete(bufClient);
-  }
 }
+
 
 void Cloud::connect() {
   Serial.println("Connecting to internet...");
@@ -162,7 +202,7 @@ void Cloud::connect() {
     Serial.println("Success connected");
   }
   
-	delay(3000);
+  delay(3000);
 }
 
 void Cloud::run() {
@@ -193,8 +233,6 @@ void Cloud::parseHttpResponce(String responce) {
     }
   }
 }
-
-
 
 void Cloud::executeOrder(String str) {
   int nameEndPos = str.substring(1).indexOf("\"");
@@ -295,9 +333,23 @@ void Cloud::clearSensorsValues() {
 }
 
 void Cloud::setInterval(int interval) {
-  if (interval < 5000)
-    this->interval = 5000;
+  if (interval < 8000)
+    this->interval = 8000;
   else
     this->interval = interval;
+}
 
+bool Cloud::isAnswerRecived(){
+    return !waitResponce;
+}
+
+void Cloud::printLastResponseTime(){
+    Serial.println();
+    Serial.print("Answer recived at: ");
+    Serial.print(getHour());
+    Serial.print(" : ");
+    Serial.print(getMinute());
+    Serial.print(" : ");
+    Serial.print(getSecond());
+    Serial.println();
 }
